@@ -41,25 +41,26 @@ test("resolveApprovals keeps explicit approvals without prompting", async () => 
     }
   }, {
     preselectedApprovals: 2,
-    assumeYes: false,
     isInteractive: true
   });
 
   assert.equal(approvals, 2);
 });
 
-test("resolveApprovals defaults to 1 for --yes without prompting", async () => {
-  const approvals = await resolveApprovals({
-    question: async () => {
-      throw new Error("question should not be called");
+test("resolveApprovals still prompts in an interactive terminal", async () => {
+  const prompts = [];
+  const { result: approvals } = await captureLogs(async () => resolveApprovals({
+    question: async (prompt) => {
+      prompts.push(prompt);
+      return "0";
     }
   }, {
     preselectedApprovals: null,
-    assumeYes: true,
     isInteractive: true
-  });
+  }));
 
-  assert.equal(approvals, 1);
+  assert.equal(approvals, 0);
+  assert.deepEqual(prompts, ["Required approvals [0-6] (default: 1): "]);
 });
 
 test("resolveApprovals defaults to 1 outside an interactive terminal", async () => {
@@ -69,7 +70,6 @@ test("resolveApprovals defaults to 1 outside an interactive terminal", async () 
     }
   }, {
     preselectedApprovals: null,
-    assumeYes: false,
     isInteractive: false
   });
 

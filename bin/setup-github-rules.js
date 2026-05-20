@@ -189,11 +189,10 @@ export async function selectApprovals(rl, preselectedApprovals) {
 
 export async function resolveApprovals(rl, {
   preselectedApprovals,
-  assumeYes,
   isInteractive
 }) {
   if (preselectedApprovals !== null) return preselectedApprovals;
-  if (assumeYes || !isInteractive) return 1;
+  if (!isInteractive) return 1;
   return selectApprovals(rl, null);
 }
 
@@ -284,7 +283,6 @@ async function main() {
     const selectedBranch = await selectBranch(rl, args.branch);
     const approvals = await resolveApprovals(rl, {
       preselectedApprovals: args.approvals,
-      assumeYes: args.yes,
       isInteractive: Boolean(input.isTTY && output.isTTY)
     });
     const rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
