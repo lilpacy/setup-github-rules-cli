@@ -1,4 +1,4 @@
-# setup-github-rules
+# @lilpacy/setup-github-rules
 
 `npx` で実行できる、GitHub repository ruleset の one-shot setup CLI です。
 
@@ -112,19 +112,9 @@ Done.
 Default branch 'develop' now requires Pull Requests before changes can be merged.
 ```
 
-## npm package 名の変更
+## ローカル確認
 
-このテンプレートでは `package.json` の package name を仮で `@lilpacy/setup-github-rules` にしています。
-
-実際に使う場合は、以下を変更してください。
-
-```json
-{
-  "name": "@lilpacy/setup-github-rules"
-}
-```
-
-たとえば publish せずローカルで試す場合:
+publish 前にローカルで試す場合:
 
 ```bash
 cd setup-github-rules-cli
@@ -136,6 +126,24 @@ setup-github-rules --help
 
 ```bash
 npx /path/to/setup-github-rules-cli --help
+```
+
+## npm に公開する
+
+この repository は scoped package `@lilpacy/setup-github-rules` として公開する前提です。
+`package.json` には `publishConfig.access=public` を入れているので、初回 publish でも `--access public` を毎回付ける必要はありません。
+
+```bash
+npm login
+npm run prepublishOnly
+npm publish
+```
+
+公開確認:
+
+```bash
+npm view @lilpacy/setup-github-rules version
+npx @lilpacy/setup-github-rules --help
 ```
 
 ## 注意点

@@ -6,20 +6,39 @@
   "bin": {
     "setup-github-rules": "./bin/setup-github-rules.js"
   },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "check": "node --check ./bin/setup-github-rules.js",
+    "test": "node --test",
+    "prepublishOnly": "npm run check && npm test && npm pack --dry-run",
     "start": "node ./bin/setup-github-rules.js"
   },
   "keywords": [
+    "cli",
     "github",
     "gh",
     "ruleset",
     "branch-protection",
     "pull-request"
   ],
-  "author": "",
+  "author": "lilpacy",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lilpacy/setup-github-rules-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lilpacy/setup-github-rules-cli/issues"
+  },
+  "homepage": "https://github.com/lilpacy/setup-github-rules-cli#readme",
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
