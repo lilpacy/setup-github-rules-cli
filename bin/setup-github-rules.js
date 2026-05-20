@@ -6,11 +6,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { fileURLToPath } from "node:url";
 
 const API_VERSION = "2022-11-28";
 const DEFAULT_RULESET_NAME_PREFIX = "Require PR to";
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = {
     repo: null,
     branch: null,
@@ -33,11 +34,15 @@ function parseArgs(argv) {
     else throw new Error(`Unknown option: ${arg}`);
   }
 
-  if (args.approvals !== null && (!Number.isInteger(args.approvals) || args.approvals < 0 || args.approvals > 6)) {
+  if (args.approvals !== null && !isValidApprovalCount(args.approvals)) {
     throw new Error("--required-approvals must be an integer between 0 and 6.");
   }
 
   return args;
+}
+
+function isValidApprovalCount(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 6;
 }
 
 function printHelp() {
@@ -53,7 +58,7 @@ Usage:
 Options:
   --repo OWNER/REPO              Target repository. Defaults to current git remote.
   --branch BRANCH                Default branch to set and protect. Skips branch prompt.
-  --required-approvals N         Required approving reviews. Default: 1.
+  --required-approvals N         Required approving reviews. If omitted, prompt with default 1.
   --ruleset-name NAME            Ruleset name. Default: "Require PR to <branch>".
   --yes, -y                      Skip final confirmation.
   --dry-run                      Print planned operations without changing GitHub.
@@ -168,6 +173,20 @@ async function selectBranch(rl, preselectedBranch) {
   }
 }
 
+export async function selectApprovals(rl, preselectedApprovals) {
+  if (preselectedApprovals !== null) return preselectedApprovals;
+
+  console.log("\nChoose the number of required approving reviews.");
+  console.log("Use 0 for solo repositories where nobody else can approve your PR.");
+
+  while (true) {
+    const answer = (await rl.question("Required approvals [0-6] (default: 1): ")).trim();
+    const approvals = answer === "" ? 1 : Number(answer);
+    if (isValidApprovalCount(approvals)) return approvals;
+    console.log("Please enter an integer between 0 and 6.");
+  }
+}
+
 function isValidBranchName(branch) {
   return Boolean(branch) &&
     !branch.startsWith("/") &&
@@ -253,7 +272,7 @@ async function main() {
     const repoInfo = ghApi(`/repos/${owner}/${repo}`);
     const currentDefaultBranch = repoInfo.default_branch;
     const selectedBranch = await selectBranch(rl, args.branch);
-    const approvals = args.approvals ?? 1;
+    const approvals = await selectApprovals(rl, args.approvals);
     const rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
 
     console.log("\nPlan:");
@@ -318,7 +337,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`\nError: ${error.message}`);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(`\nError: ${error.message}`);
+    process.exit(1);
+  });
+}

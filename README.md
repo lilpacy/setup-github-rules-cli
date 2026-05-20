@@ -74,6 +74,18 @@ npx @lilpacy/setup-github-rules \
   --yes
 ```
 
+### required approvals を対話で選ぶ
+
+`--required-approvals` を省略すると、実行中に `0` から `6` を選べます。Enter だけ押した場合は `1` です。
+
+```txt
+Choose the number of required approving reviews.
+Use 0 for solo repositories where nobody else can approve your PR.
+Required approvals [0-6] (default: 1):
+```
+
+1 人で開発している repository なら、通常は `0` を選ぶのが安全です。
+
 ### dry-run
 
 ```bash
