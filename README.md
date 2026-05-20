@@ -112,7 +112,7 @@ Plan:
   Current default:      main
   New default:          develop
   Protected branch:     develop
-  Required approvals:   1
+  Required approvals:   0
   Ruleset name:         Require PR to develop
 
 Apply these changes? [y/N]: y
