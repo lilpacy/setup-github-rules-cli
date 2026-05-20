@@ -58,7 +58,7 @@ Usage:
 Options:
   --repo OWNER/REPO              Target repository. Defaults to current git remote.
   --branch BRANCH                Default branch to set and protect. Skips branch prompt.
-  --required-approvals N         Required approving reviews. If omitted, prompt with default 1.
+  --required-approvals N         Required approving reviews. If omitted, prompt with default 0.
   --ruleset-name NAME            Ruleset name. Default: "Require PR to <branch>".
   --yes, -y                      Skip final confirmation.
   --dry-run                      Print planned operations without changing GitHub.
@@ -180,8 +180,8 @@ export async function selectApprovals(rl, preselectedApprovals) {
   console.log("Use 0 for solo repositories where nobody else can approve your PR.");
 
   while (true) {
-    const answer = (await rl.question("Required approvals [0-6] (default: 1): ")).trim();
-    const approvals = answer === "" ? 1 : Number(answer);
+    const answer = (await rl.question("Required approvals [0-6] (default: 0): ")).trim();
+    const approvals = answer === "" ? 0 : Number(answer);
     if (isValidApprovalCount(approvals)) return approvals;
     console.log("Please enter an integer between 0 and 6.");
   }
@@ -192,7 +192,7 @@ export async function resolveApprovals(rl, {
   isInteractive
 }) {
   if (preselectedApprovals !== null) return preselectedApprovals;
-  if (!isInteractive) return 1;
+  if (!isInteractive) return 0;
   return selectApprovals(rl, null);
 }
 

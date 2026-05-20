@@ -76,12 +76,12 @@ npx @lilpacy/setup-github-rules \
 
 ### required approvals を対話で選ぶ
 
-`--required-approvals` を省略すると、実行中に `0` から `6` を選べます。Enter だけ押した場合は `1` です。
+`--required-approvals` を省略すると、実行中に `0` から `6` を選べます。Enter だけ押した場合は `0` です。
 
 ```txt
 Choose the number of required approving reviews.
 Use 0 for solo repositories where nobody else can approve your PR.
-Required approvals [0-6] (default: 1):
+Required approvals [0-6] (default: 0):
 ```
 
 1 人で開発している repository なら、通常は `0` を選ぶのが安全です。
@@ -98,7 +98,7 @@ npx @lilpacy/setup-github-rules --repo lilpacy/repo-a --dry-run
 |---|---|---|
 | `--repo OWNER/REPO` | 対象 repository | current git remote から検出 |
 | `--branch BRANCH` | default branch / protected branch | 対話式で選択 |
-| `--required-approvals N` | 必須 approval 数 | `1` |
+| `--required-approvals N` | 必須 approval 数 | `0` |
 | `--ruleset-name NAME` | ruleset 名 | `Require PR to <branch>` |
 | `--yes`, `-y` | 最終確認をスキップ | `false` |
 | `--dry-run` | 変更せず plan だけ表示 | `false` |

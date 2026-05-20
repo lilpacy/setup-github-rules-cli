@@ -60,10 +60,10 @@ test("resolveApprovals still prompts in an interactive terminal", async () => {
   }));
 
   assert.equal(approvals, 0);
-  assert.deepEqual(prompts, ["Required approvals [0-6] (default: 1): "]);
+  assert.deepEqual(prompts, ["Required approvals [0-6] (default: 0): "]);
 });
 
-test("resolveApprovals defaults to 1 outside an interactive terminal", async () => {
+test("resolveApprovals defaults to 0 outside an interactive terminal", async () => {
   const approvals = await resolveApprovals({
     question: async () => {
       throw new Error("question should not be called");
@@ -73,7 +73,7 @@ test("resolveApprovals defaults to 1 outside an interactive terminal", async () 
     isInteractive: false
   });
 
-  assert.equal(approvals, 1);
+  assert.equal(approvals, 0);
 });
 
 test("selectApprovals accepts enter for the default value", async () => {
@@ -85,8 +85,8 @@ test("selectApprovals accepts enter for the default value", async () => {
     }
   }, null));
 
-  assert.equal(approvals, 1);
-  assert.deepEqual(prompts, ["Required approvals [0-6] (default: 1): "]);
+  assert.equal(approvals, 0);
+  assert.deepEqual(prompts, ["Required approvals [0-6] (default: 0): "]);
 });
 
 test("selectApprovals retries until it receives a valid integer", async () => {
@@ -101,9 +101,9 @@ test("selectApprovals retries until it receives a valid integer", async () => {
 
   assert.equal(approvals, 0);
   assert.deepEqual(prompts, [
-    "Required approvals [0-6] (default: 1): ",
-    "Required approvals [0-6] (default: 1): ",
-    "Required approvals [0-6] (default: 1): "
+    "Required approvals [0-6] (default: 0): ",
+    "Required approvals [0-6] (default: 0): ",
+    "Required approvals [0-6] (default: 0): "
   ]);
   assert.deepEqual(logs, [
     "\nChoose the number of required approving reviews.",
