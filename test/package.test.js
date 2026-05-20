@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
@@ -9,7 +11,7 @@ test("scoped package is configured for public npm publish", () => {
   assert.equal(packageJson.name, "@lilpacy/setup-github-rules");
   assert.equal(packageJson.publishConfig?.access, "public");
   assert.deepEqual(packageJson.bin, {
-    "setup-github-rules": "./bin/setup-github-rules.js"
+    "setup-github-rules": "bin/setup-github-rules.js"
   });
 });
 
@@ -29,4 +31,35 @@ test("npm pack dry-run includes only publishable files", () => {
     "bin/setup-github-rules.js",
     "package.json"
   ]);
+});
+
+test("packed tarball keeps a runnable bin path", () => {
+  const packDir = mkdtempSync(path.join(tmpdir(), "setup-github-rules-pack-"));
+
+  try {
+    const packResult = spawnSync("npm", ["pack", "--json", "--pack-destination", packDir], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        npm_config_dry_run: "false"
+      }
+    });
+
+    assert.equal(packResult.status, 0, packResult.stderr);
+
+    const [{ filename }] = JSON.parse(packResult.stdout);
+    const tarballPath = path.join(packDir, filename);
+    const packageJsonResult = spawnSync("tar", ["-xOf", tarballPath, "package/package.json"], {
+      encoding: "utf8"
+    });
+
+    assert.equal(packageJsonResult.status, 0, packageJsonResult.stderr);
+
+    const packedManifest = JSON.parse(packageJsonResult.stdout);
+    assert.deepEqual(packedManifest.bin, {
+      "setup-github-rules": "bin/setup-github-rules.js"
+    });
+  } finally {
+    rmSync(packDir, { recursive: true, force: true });
+  }
 });
