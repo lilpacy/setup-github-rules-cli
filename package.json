@@ -1,0 +1,25 @@
+{
+  "name": "@lilpacy/setup-github-rules",
+  "version": "0.1.0",
+  "description": "One-shot interactive GitHub repository rules setup using gh CLI. No Terraform state, no generated files.",
+  "type": "module",
+  "bin": {
+    "setup-github-rules": "./bin/setup-github-rules.js"
+  },
+  "scripts": {
+    "check": "node --check ./bin/setup-github-rules.js",
+    "start": "node ./bin/setup-github-rules.js"
+  },
+  "keywords": [
+    "github",
+    "gh",
+    "ruleset",
+    "branch-protection",
+    "pull-request"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

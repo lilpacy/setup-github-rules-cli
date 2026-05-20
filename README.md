@@ -1,0 +1,152 @@
+# setup-github-rules
+
+`npx` で実行できる、GitHub repository ruleset の one-shot setup CLI です。
+
+Terraform は使いません。`terraform.tfstate` も生成しません。内部では GitHub CLI の `gh api` を使って、対象 repository に対して直接 GitHub API を実行します。
+
+## できること
+
+- 現在の git remote から `OWNER/REPO` を自動検出
+- 対話的に default branch を選択
+  - `main`
+  - `develop`
+  - 任意の branch
+- branch が存在しなければ、現在の GitHub default branch から作成
+- repository の `default_branch` を選択した branch に変更
+- 選択した branch に対して PR 必須 ruleset を作成または更新
+- branch deletion を禁止
+- non-fast-forward / force push 系を禁止
+- 既存の同名 ruleset がある場合は更新するので、再実行しやすい
+
+## 前提
+
+- Node.js 18+
+- git
+- GitHub CLI `gh`
+- `gh auth login` 済み
+- 対象 repository に対する admin 権限
+
+確認:
+
+```bash
+gh auth status
+```
+
+## 使い方
+
+### 対話式で実行
+
+対象 repository の中で実行します。
+
+```bash
+npx @lilpacy/setup-github-rules
+```
+
+実行すると、default branch を選べます。
+
+```txt
+Choose the repository default branch:
+  1) main
+  2) develop
+  3) other
+Select [1/2/3]:
+```
+
+### repository を明示する
+
+```bash
+npx @lilpacy/setup-github-rules --repo lilpacy/repo-a
+```
+
+### branch を非対話で指定する
+
+```bash
+npx @lilpacy/setup-github-rules --repo lilpacy/repo-a --branch develop --yes
+```
+
+### required approvals を指定する
+
+```bash
+npx @lilpacy/setup-github-rules \
+  --repo lilpacy/repo-a \
+  --branch develop \
+  --required-approvals 1 \
+  --yes
+```
+
+### dry-run
+
+```bash
+npx @lilpacy/setup-github-rules --repo lilpacy/repo-a --dry-run
+```
+
+## オプション
+
+| Option | Description | Default |
+|---|---|---|
+| `--repo OWNER/REPO` | 対象 repository | current git remote から検出 |
+| `--branch BRANCH` | default branch / protected branch | 対話式で選択 |
+| `--required-approvals N` | 必須 approval 数 | `1` |
+| `--ruleset-name NAME` | ruleset 名 | `Require PR to <branch>` |
+| `--yes`, `-y` | 最終確認をスキップ | `false` |
+| `--dry-run` | 変更せず plan だけ表示 | `false` |
+| `--help`, `-h` | help 表示 | - |
+
+## 実行例
+
+```txt
+Plan:
+  Repository:           lilpacy/repo-a
+  Current default:      main
+  New default:          develop
+  Protected branch:     develop
+  Required approvals:   1
+  Ruleset name:         Require PR to develop
+
+Apply these changes? [y/N]: y
+Creating branch 'develop' from 'main'...
+Setting default branch to 'develop'...
+Creating ruleset 'Require PR to develop'...
+
+Done.
+Default branch 'develop' now requires Pull Requests before changes can be merged.
+```
+
+## npm package 名の変更
+
+このテンプレートでは `package.json` の package name を仮で `@lilpacy/setup-github-rules` にしています。
+
+実際に使う場合は、以下を変更してください。
+
+```json
+{
+  "name": "@lilpacy/setup-github-rules"
+}
+```
+
+たとえば publish せずローカルで試す場合:
+
+```bash
+cd setup-github-rules-cli
+npm link
+setup-github-rules --help
+```
+
+または package directory を直接指定して実行できます。
+
+```bash
+npx /path/to/setup-github-rules-cli --help
+```
+
+## 注意点
+
+この CLI は Terraform ではありません。state や desired state 管理はありません。
+
+その代わり、以下の用途に向いています。
+
+- 新規 repository 作成直後に ruleset をすぐ反映したい
+- `gh` 認証をそのまま使いたい
+- repository 内に IaC ファイルや state を残したくない
+- 小〜中規模で、ワンコマンド setup を優先したい
+
+厳密な drift detection、PR review 付きの設定変更、org 全体の一元管理が必要な場合は Terraform / OpenTofu 方式のほうが向いています。
