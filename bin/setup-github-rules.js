@@ -187,6 +187,16 @@ export async function selectApprovals(rl, preselectedApprovals) {
   }
 }
 
+export async function resolveApprovals(rl, {
+  preselectedApprovals,
+  assumeYes,
+  isInteractive
+}) {
+  if (preselectedApprovals !== null) return preselectedApprovals;
+  if (assumeYes || !isInteractive) return 1;
+  return selectApprovals(rl, null);
+}
+
 function isValidBranchName(branch) {
   return Boolean(branch) &&
     !branch.startsWith("/") &&
@@ -272,7 +282,11 @@ async function main() {
     const repoInfo = ghApi(`/repos/${owner}/${repo}`);
     const currentDefaultBranch = repoInfo.default_branch;
     const selectedBranch = await selectBranch(rl, args.branch);
-    const approvals = await selectApprovals(rl, args.approvals);
+    const approvals = await resolveApprovals(rl, {
+      preselectedApprovals: args.approvals,
+      assumeYes: args.yes,
+      isInteractive: Boolean(input.isTTY && output.isTTY)
+    });
     const rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
 
     console.log("\nPlan:");

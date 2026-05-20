@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseArgs, selectApprovals } from "../bin/setup-github-rules.js";
+import { parseArgs, resolveApprovals, selectApprovals } from "../bin/setup-github-rules.js";
 
 async function captureLogs(run) {
   const logs = [];
@@ -32,6 +32,48 @@ test("selectApprovals returns preselected value without prompting", async () => 
   }, 3);
 
   assert.equal(approvals, 3);
+});
+
+test("resolveApprovals keeps explicit approvals without prompting", async () => {
+  const approvals = await resolveApprovals({
+    question: async () => {
+      throw new Error("question should not be called");
+    }
+  }, {
+    preselectedApprovals: 2,
+    assumeYes: false,
+    isInteractive: true
+  });
+
+  assert.equal(approvals, 2);
+});
+
+test("resolveApprovals defaults to 1 for --yes without prompting", async () => {
+  const approvals = await resolveApprovals({
+    question: async () => {
+      throw new Error("question should not be called");
+    }
+  }, {
+    preselectedApprovals: null,
+    assumeYes: true,
+    isInteractive: true
+  });
+
+  assert.equal(approvals, 1);
+});
+
+test("resolveApprovals defaults to 1 outside an interactive terminal", async () => {
+  const approvals = await resolveApprovals({
+    question: async () => {
+      throw new Error("question should not be called");
+    }
+  }, {
+    preselectedApprovals: null,
+    assumeYes: false,
+    isInteractive: false
+  });
+
+  assert.equal(approvals, 1);
 });
 
 test("selectApprovals accepts enter for the default value", async () => {
