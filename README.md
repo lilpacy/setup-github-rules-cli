@@ -87,6 +87,20 @@ Required approvals [0-6] (default: 0):
 
 1 人で開発している repository なら、通常は `0` を選ぶのが安全です。
 
+### 設定を単体で適用する
+
+通常実行では default branch / ruleset / merge 後 branch 削除をまとめて設定します。
+特定の設定だけを適用したい場合は `--only` を使います。
+
+PR merge 後に head branch を自動削除する設定だけを有効にする:
+
+```bash
+npx @lilpacy/setup-github-rules \
+  --repo lilpacy/repo-a \
+  --only delete-branch-on-merge \
+  --yes
+```
+
 ### dry-run
 
 ```bash
@@ -101,6 +115,7 @@ npx @lilpacy/setup-github-rules --repo lilpacy/repo-a --dry-run
 | `--branch BRANCH` | default branch / protected branch | 対話式で選択 |
 | `--required-approvals N` | 必須 approval 数 | `0` |
 | `--ruleset-name NAME` | ruleset 名 | `Require PR to <branch>` |
+| `--only NAME` | 指定した設定だけを適用。対応値: `delete-branch-on-merge` | 通常のまとめて設定 |
 | `--yes`, `-y` | 最終確認をスキップ | `false` |
 | `--dry-run` | 変更せず plan だけ表示 | `false` |
 | `--help`, `-h` | help 表示 | - |
@@ -125,6 +140,20 @@ Creating ruleset 'Require PR to develop'...
 
 Done.
 Default branch 'develop' now requires Pull Requests before changes can be merged.
+Merged Pull Request branches will be deleted automatically.
+```
+
+単体適用:
+
+```txt
+Plan:
+  Repository:           lilpacy/repo-a
+  Delete merged branch: enabled
+
+Apply these changes? [y/N]: y
+Enabling automatic branch deletion after merge...
+
+Done.
 Merged Pull Request branches will be deleted automatically.
 ```
 

@@ -10,12 +10,15 @@ import { fileURLToPath } from "node:url";
 
 const API_VERSION = "2022-11-28";
 const DEFAULT_RULESET_NAME_PREFIX = "Require PR to";
+const ONLY_DELETE_BRANCH_ON_MERGE = "delete-branch-on-merge";
+const ONLY_OPTIONS = new Set([ONLY_DELETE_BRANCH_ON_MERGE]);
 
 export function parseArgs(argv) {
   const args = {
     repo: null,
     branch: null,
     approvals: null,
+    only: null,
     yes: false,
     dryRun: false,
     help: false,
@@ -28,6 +31,7 @@ export function parseArgs(argv) {
     else if (arg === "--branch") args.branch = argv[++i];
     else if (arg === "--required-approvals") args.approvals = Number(argv[++i]);
     else if (arg === "--ruleset-name") args.rulesetName = argv[++i];
+    else if (arg === "--only") args.only = argv[++i] ?? "";
     else if (arg === "--yes" || arg === "-y") args.yes = true;
     else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -36,6 +40,16 @@ export function parseArgs(argv) {
 
   if (args.approvals !== null && !isValidApprovalCount(args.approvals)) {
     throw new Error("--required-approvals must be an integer between 0 and 6.");
+  }
+
+  if (args.only !== null && !ONLY_OPTIONS.has(args.only)) {
+    throw new Error(`--only must be one of: ${ONLY_DELETE_BRANCH_ON_MERGE}.`);
+  }
+
+  if (args.only === ONLY_DELETE_BRANCH_ON_MERGE) {
+    if (args.branch !== null) throw new Error(`--branch cannot be used with --only ${ONLY_DELETE_BRANCH_ON_MERGE}.`);
+    if (args.approvals !== null) throw new Error(`--required-approvals cannot be used with --only ${ONLY_DELETE_BRANCH_ON_MERGE}.`);
+    if (args.rulesetName !== null) throw new Error(`--ruleset-name cannot be used with --only ${ONLY_DELETE_BRANCH_ON_MERGE}.`);
   }
 
   return args;
@@ -54,12 +68,14 @@ Usage:
   npx @lilpacy/setup-github-rules
   npx @lilpacy/setup-github-rules --repo OWNER/REPO
   npx @lilpacy/setup-github-rules --repo OWNER/REPO --branch develop --yes
+  npx @lilpacy/setup-github-rules --repo OWNER/REPO --only delete-branch-on-merge --yes
 
 Options:
   --repo OWNER/REPO              Target repository. Defaults to current git remote.
   --branch BRANCH                Default branch to set and protect. Skips branch prompt.
   --required-approvals N         Required approving reviews. If omitted, prompt with default 0.
   --ruleset-name NAME            Ruleset name. Default: "Require PR to <branch>".
+  --only NAME                    Apply only one setting. Supported: delete-branch-on-merge.
   --yes, -y                      Skip final confirmation.
   --dry-run                      Print planned operations without changing GitHub.
   --help, -h                     Show this help.
@@ -258,6 +274,12 @@ export function makeRepositorySettingsPayload({ currentDefaultBranch, selectedBr
   return payload;
 }
 
+function makeDeleteBranchOnMergePayload() {
+  return {
+    delete_branch_on_merge: true
+  };
+}
+
 function createBranchFrom(owner, repo, newBranch, sourceBranch) {
   const sourceRef = ghApi(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(sourceBranch)}`);
   ghApi(`/repos/${owner}/${repo}/git/refs`, {
@@ -274,6 +296,114 @@ function findExistingRuleset(owner, repo, rulesetName) {
   return Array.isArray(rulesets) ? rulesets.find((ruleset) => ruleset.name === rulesetName) : null;
 }
 
+async function confirmIfNeeded(args, deps) {
+  if (args.yes) return true;
+
+  const confirm = (await deps.question("\nApply these changes? [y/N]: ")).trim().toLowerCase();
+  if (confirm === "y" || confirm === "yes") return true;
+
+  deps.log("Cancelled. No changes were made.");
+  return false;
+}
+
+async function runDeleteBranchOnMergeOnly(args, deps, owner, repo) {
+  deps.log("\nPlan:");
+  deps.log(`  Repository:           ${owner}/${repo}`);
+  deps.log("  Delete merged branch: enabled");
+
+  if (args.dryRun) {
+    deps.log("\nDry run only. No changes were made.");
+    return;
+  }
+
+  if (!(await confirmIfNeeded(args, deps))) return;
+
+  deps.log("Enabling automatic branch deletion after merge...");
+  deps.ghApi(`/repos/${owner}/${repo}`, {
+    method: "PATCH",
+    body: makeDeleteBranchOnMergePayload()
+  });
+
+  deps.log("\nDone.");
+  deps.log("Merged Pull Request branches will be deleted automatically.");
+}
+
+export async function runSetup(args, deps) {
+  const repoFullName = args.repo ?? deps.detectRepoFromGitRemote();
+  const { owner, repo } = splitRepo(repoFullName);
+
+  if (args.only === ONLY_DELETE_BRANCH_ON_MERGE) {
+    await runDeleteBranchOnMergeOnly(args, deps, owner, repo);
+    return;
+  }
+
+  const questionInterface = { question: deps.question };
+  const repoInfo = deps.ghApi(`/repos/${owner}/${repo}`);
+  const currentDefaultBranch = repoInfo.default_branch;
+  const selectedBranch = await selectBranch(questionInterface, args.branch);
+  const approvals = await resolveApprovals(questionInterface, {
+    preselectedApprovals: args.approvals,
+    isInteractive: Boolean(deps.inputIsTTY && deps.outputIsTTY)
+  });
+  const rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
+
+  deps.log("\nPlan:");
+  deps.log(`  Repository:           ${owner}/${repo}`);
+  deps.log(`  Current default:      ${currentDefaultBranch}`);
+  deps.log(`  New default:          ${selectedBranch}`);
+  deps.log(`  Protected branch:     ${selectedBranch}`);
+  deps.log(`  Required approvals:   ${approvals}`);
+  deps.log(`  Ruleset name:         ${rulesetName}`);
+  deps.log("  Delete merged branch: enabled");
+
+  if (args.dryRun) {
+    deps.log("\nDry run only. No changes were made.");
+    return;
+  }
+
+  if (!(await confirmIfNeeded(args, deps))) return;
+
+  if (!deps.branchExists(owner, repo, selectedBranch)) {
+    deps.log(`Creating branch '${selectedBranch}' from '${currentDefaultBranch}'...`);
+    deps.createBranchFrom(owner, repo, selectedBranch, currentDefaultBranch);
+  } else {
+    deps.log(`Branch '${selectedBranch}' already exists.`);
+  }
+
+  if (currentDefaultBranch !== selectedBranch) {
+    deps.log(`Setting default branch to '${selectedBranch}'...`);
+  } else {
+    deps.log(`Default branch is already '${selectedBranch}'.`);
+  }
+
+  deps.log("Enabling automatic branch deletion after merge...");
+  deps.ghApi(`/repos/${owner}/${repo}`, {
+    method: "PATCH",
+    body: makeRepositorySettingsPayload({ currentDefaultBranch, selectedBranch })
+  });
+
+  const payload = makeRulesetPayload({ branch: selectedBranch, rulesetName, approvals });
+  const existing = deps.findExistingRuleset(owner, repo, rulesetName);
+
+  if (existing) {
+    deps.log(`Updating existing ruleset '${rulesetName}'...`);
+    deps.ghApi(`/repos/${owner}/${repo}/rulesets/${existing.id}`, {
+      method: "PUT",
+      body: payload
+    });
+  } else {
+    deps.log(`Creating ruleset '${rulesetName}'...`);
+    deps.ghApi(`/repos/${owner}/${repo}/rulesets`, {
+      method: "POST",
+      body: payload
+    });
+  }
+
+  deps.log("\nDone.");
+  deps.log(`Default branch '${selectedBranch}' now requires Pull Requests before changes can be merged.`);
+  deps.log("Merged Pull Request branches will be deleted automatically.");
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -286,81 +416,19 @@ async function main() {
 
   run("gh", ["auth", "status"], { stdio: ["ignore", "ignore", "pipe"] });
 
-  const repoFullName = args.repo ?? detectRepoFromGitRemote();
-  const { owner, repo } = splitRepo(repoFullName);
-
   const rl = readline.createInterface({ input, output });
   try {
-    const repoInfo = ghApi(`/repos/${owner}/${repo}`);
-    const currentDefaultBranch = repoInfo.default_branch;
-    const selectedBranch = await selectBranch(rl, args.branch);
-    const approvals = await resolveApprovals(rl, {
-      preselectedApprovals: args.approvals,
-      isInteractive: Boolean(input.isTTY && output.isTTY)
+    await runSetup(args, {
+      detectRepoFromGitRemote,
+      ghApi,
+      branchExists,
+      createBranchFrom,
+      findExistingRuleset,
+      log: console.log,
+      question: (prompt) => rl.question(prompt),
+      inputIsTTY: input.isTTY,
+      outputIsTTY: output.isTTY
     });
-    const rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
-
-    console.log("\nPlan:");
-    console.log(`  Repository:           ${owner}/${repo}`);
-    console.log(`  Current default:      ${currentDefaultBranch}`);
-    console.log(`  New default:          ${selectedBranch}`);
-    console.log(`  Protected branch:     ${selectedBranch}`);
-    console.log(`  Required approvals:   ${approvals}`);
-    console.log(`  Ruleset name:         ${rulesetName}`);
-    console.log("  Delete merged branch: enabled");
-
-    if (args.dryRun) {
-      console.log("\nDry run only. No changes were made.");
-      return;
-    }
-
-    if (!args.yes) {
-      const confirm = (await rl.question("\nApply these changes? [y/N]: ")).trim().toLowerCase();
-      if (confirm !== "y" && confirm !== "yes") {
-        console.log("Cancelled. No changes were made.");
-        return;
-      }
-    }
-
-    if (!branchExists(owner, repo, selectedBranch)) {
-      console.log(`Creating branch '${selectedBranch}' from '${currentDefaultBranch}'...`);
-      createBranchFrom(owner, repo, selectedBranch, currentDefaultBranch);
-    } else {
-      console.log(`Branch '${selectedBranch}' already exists.`);
-    }
-
-    if (currentDefaultBranch !== selectedBranch) {
-      console.log(`Setting default branch to '${selectedBranch}'...`);
-    } else {
-      console.log(`Default branch is already '${selectedBranch}'.`);
-    }
-
-    console.log("Enabling automatic branch deletion after merge...");
-    ghApi(`/repos/${owner}/${repo}`, {
-      method: "PATCH",
-      body: makeRepositorySettingsPayload({ currentDefaultBranch, selectedBranch })
-    });
-
-    const payload = makeRulesetPayload({ branch: selectedBranch, rulesetName, approvals });
-    const existing = findExistingRuleset(owner, repo, rulesetName);
-
-    if (existing) {
-      console.log(`Updating existing ruleset '${rulesetName}'...`);
-      ghApi(`/repos/${owner}/${repo}/rulesets/${existing.id}`, {
-        method: "PUT",
-        body: payload
-      });
-    } else {
-      console.log(`Creating ruleset '${rulesetName}'...`);
-      ghApi(`/repos/${owner}/${repo}/rulesets`, {
-        method: "POST",
-        body: payload
-      });
-    }
-
-    console.log("\nDone.");
-    console.log(`Default branch '${selectedBranch}' now requires Pull Requests before changes can be merged.`);
-    console.log("Merged Pull Request branches will be deleted automatically.");
   } finally {
     rl.close();
   }
