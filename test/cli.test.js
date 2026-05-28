@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseArgs, resolveApprovals, selectApprovals } from "../bin/setup-github-rules.js";
+import { makeRepositorySettingsPayload, parseArgs, resolveApprovals, selectApprovals } from "../bin/setup-github-rules.js";
 
 async function captureLogs(run) {
   const logs = [];
@@ -22,6 +22,29 @@ test("parseArgs keeps explicit required approvals", () => {
   const args = parseArgs(["--required-approvals", "2"]);
 
   assert.equal(args.approvals, 2);
+});
+
+test("準正常系: default branch を変更しないとき マージ後のブランチ削除だけを有効にする", () => {
+  const payload = makeRepositorySettingsPayload({
+    currentDefaultBranch: "main",
+    selectedBranch: "main"
+  });
+
+  assert.deepEqual(payload, {
+    delete_branch_on_merge: true
+  });
+});
+
+test("正常系: default branch を変更するとき マージ後のブランチ削除も一緒に有効にする", () => {
+  const payload = makeRepositorySettingsPayload({
+    currentDefaultBranch: "main",
+    selectedBranch: "develop"
+  });
+
+  assert.deepEqual(payload, {
+    default_branch: "develop",
+    delete_branch_on_merge: true
+  });
 });
 
 test("selectApprovals returns preselected value without prompting", async () => {

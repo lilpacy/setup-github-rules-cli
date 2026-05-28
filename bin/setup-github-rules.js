@@ -69,7 +69,8 @@ What it does:
   2. Lets you choose main, develop, or another default branch.
   3. Creates the branch from the current GitHub default branch if missing.
   4. Updates the repository default_branch.
-  5. Creates or updates a branch ruleset that requires Pull Requests.
+  5. Enables automatic deletion of head branches after Pull Requests are merged.
+  6. Creates or updates a branch ruleset that requires Pull Requests.
 `);
 }
 
@@ -245,6 +246,18 @@ function branchExists(owner, repo, branch) {
   return ghApi(`/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`, { silent404: true }) !== null;
 }
 
+export function makeRepositorySettingsPayload({ currentDefaultBranch, selectedBranch }) {
+  const payload = {
+    delete_branch_on_merge: true
+  };
+
+  if (currentDefaultBranch !== selectedBranch) {
+    payload.default_branch = selectedBranch;
+  }
+
+  return payload;
+}
+
 function createBranchFrom(owner, repo, newBranch, sourceBranch) {
   const sourceRef = ghApi(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(sourceBranch)}`);
   ghApi(`/repos/${owner}/${repo}/git/refs`, {
@@ -294,6 +307,7 @@ async function main() {
     console.log(`  Protected branch:     ${selectedBranch}`);
     console.log(`  Required approvals:   ${approvals}`);
     console.log(`  Ruleset name:         ${rulesetName}`);
+    console.log("  Delete merged branch: enabled");
 
     if (args.dryRun) {
       console.log("\nDry run only. No changes were made.");
@@ -317,13 +331,15 @@ async function main() {
 
     if (currentDefaultBranch !== selectedBranch) {
       console.log(`Setting default branch to '${selectedBranch}'...`);
-      ghApi(`/repos/${owner}/${repo}`, {
-        method: "PATCH",
-        body: { default_branch: selectedBranch }
-      });
     } else {
       console.log(`Default branch is already '${selectedBranch}'.`);
     }
+
+    console.log("Enabling automatic branch deletion after merge...");
+    ghApi(`/repos/${owner}/${repo}`, {
+      method: "PATCH",
+      body: makeRepositorySettingsPayload({ currentDefaultBranch, selectedBranch })
+    });
 
     const payload = makeRulesetPayload({ branch: selectedBranch, rulesetName, approvals });
     const existing = findExistingRuleset(owner, repo, rulesetName);
@@ -344,6 +360,7 @@ async function main() {
 
     console.log("\nDone.");
     console.log(`Default branch '${selectedBranch}' now requires Pull Requests before changes can be merged.`);
+    console.log("Merged Pull Request branches will be deleted automatically.");
   } finally {
     rl.close();
   }
