@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
@@ -366,7 +366,12 @@ async function main() {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+function isDirectExecution(argvPath, moduleUrl) {
+  if (!argvPath) return false;
+  return realpathSync(argvPath) === realpathSync(fileURLToPath(moduleUrl));
+}
+
+if (isDirectExecution(process.argv[1], import.meta.url)) {
   main().catch((error) => {
     console.error(`\nError: ${error.message}`);
     process.exit(1);

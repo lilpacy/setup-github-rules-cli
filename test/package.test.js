@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -61,5 +61,24 @@ test("packed tarball keeps a runnable bin path", () => {
     });
   } finally {
     rmSync(packDir, { recursive: true, force: true });
+  }
+});
+
+test("正常系: npx のように bin 経由で起動しても CLI として実行できる", () => {
+  const binDir = mkdtempSync(path.join(tmpdir(), "setup-github-rules-bin-"));
+
+  try {
+    const binPath = path.join(binDir, "setup-github-rules");
+    symlinkSync(new URL("../bin/setup-github-rules.js", import.meta.url), binPath);
+
+    const result = spawnSync(process.execPath, [binPath, "--help"], {
+      encoding: "utf8"
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /setup-github-rules/);
+    assert.match(result.stdout, /What it does:/);
+  } finally {
+    rmSync(binDir, { recursive: true, force: true });
   }
 });

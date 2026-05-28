@@ -141,7 +141,7 @@ setup-github-rules --help
 または package directory を直接指定して実行できます。
 
 ```bash
-npx /path/to/setup-github-rules-cli --help
+npx --package file:/path/to/setup-github-rules-cli setup-github-rules --help
 ```
 
 ## npm に公開する
