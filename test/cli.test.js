@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { makeRepositorySettingsPayload, parseArgs, resolveApprovals, runSetup, selectApprovals } from "../bin/setup-github-rules.js";
+import { makeRepositorySettingsPayload, parseArgs, parseGitHubRemoteUrl, resolveApprovals, runSetup, selectApprovals } from "../bin/setup-github-rules.js";
 
 async function captureLogs(run) {
   const logs = [];
@@ -55,6 +55,24 @@ test("parseArgs keeps explicit required approvals", () => {
   const args = parseArgs(["--required-approvals", "2"]);
 
   assert.equal(args.approvals, 2);
+});
+
+test("準正常系: ssh URL 形式の origin remote から repository を検出できる", () => {
+  const repo = parseGitHubRemoteUrl("ssh://git@github.com/lilpacy/castkit-v2.git");
+
+  assert.equal(repo, "lilpacy/castkit-v2");
+});
+
+test("正常系: scp 形式の origin remote から repository を検出できる", () => {
+  const repo = parseGitHubRemoteUrl("git@github.com:lilpacy/castkit-v2.git");
+
+  assert.equal(repo, "lilpacy/castkit-v2");
+});
+
+test("正常系: HTTPS 形式の origin remote から repository を検出できる", () => {
+  const repo = parseGitHubRemoteUrl("https://github.com/lilpacy/castkit-v2.git");
+
+  assert.equal(repo, "lilpacy/castkit-v2");
 });
 
 test("準正常系: 単体適用で関連しないオプションを指定したとき エラーになる", () => {

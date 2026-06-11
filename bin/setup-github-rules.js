@@ -116,16 +116,15 @@ function commandExists(command) {
   return !result.error && result.status === 0;
 }
 
-function detectRepoFromGitRemote() {
-  const remoteUrl = run("git", ["remote", "get-url", "origin"]);
-
-  const sshMatch = remoteUrl.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
-  if (sshMatch) return `${sshMatch[1]}/${sshMatch[2]}`;
-
-  const httpsMatch = remoteUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
-  if (httpsMatch) return `${httpsMatch[1]}/${httpsMatch[2]}`;
+export function parseGitHubRemoteUrl(remoteUrl) {
+  const match = remoteUrl.match(/^(?:git@github\.com:|https:\/\/github\.com\/|ssh:\/\/git@github\.com\/)([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
+  if (match) return `${match[1]}/${match[2]}`;
 
   throw new Error(`Could not detect OWNER/REPO from origin remote: ${remoteUrl}`);
+}
+
+function detectRepoFromGitRemote() {
+  return parseGitHubRemoteUrl(run("git", ["remote", "get-url", "origin"]));
 }
 
 function splitRepo(repo) {
