@@ -65,7 +65,7 @@ export function resolveSelection(args) {
   return {
     branchProtection: applyAll || args.branch !== null,
     deleteBranchOnMerge: applyAll || args.deleteBranchOnMerge,
-    mergeMethod: args.mergeMethod !== null
+    mergeMethod: applyAll || args.mergeMethod !== null
   };
 }
 
@@ -90,7 +90,7 @@ Options:
   --branch BRANCH                Default branch to set and protect with a PR-required ruleset.
   --required-approvals N         Required approving reviews. Requires --branch. If omitted, prompt with default 0.
   --ruleset-name NAME            Ruleset name. Requires --branch. Default: "Require PR to <branch>".
-  --merge-method METHOD          Allow only one merge method: squash, merge, or rebase.
+  --merge-method METHOD          Allow only one merge method: squash, merge, or rebase. If omitted, prompt with default: no change.
   --delete-branch-on-merge       Delete head branches automatically after Pull Requests are merged.
   --yes, -y                      Skip final confirmation.
   --dry-run                      Print planned operations without changing GitHub.
@@ -98,9 +98,9 @@ Options:
 
 Applying settings selectively:
   With no setting flag, the full interactive setup runs (branch protection,
-  delete-branch-on-merge, and any prompts). Passing any of --branch,
-  --merge-method, or --delete-branch-on-merge narrows the run to just those
-  settings.
+  delete-branch-on-merge, merge method, and any prompts). Passing any of
+  --branch, --merge-method, or --delete-branch-on-merge narrows the run to
+  just those settings.
 
 What the full setup does:
   1. Detects or accepts OWNER/REPO.
@@ -108,7 +108,8 @@ What the full setup does:
   3. Creates the branch from the current GitHub default branch if missing.
   4. Updates the repository default_branch.
   5. Enables automatic deletion of head branches after Pull Requests are merged.
-  6. Creates or updates a branch ruleset that requires Pull Requests.
+  6. Lets you choose a merge method to allow, or leave it unchanged.
+  7. Creates or updates a branch ruleset that requires Pull Requests.
 `);
 }
 
@@ -234,6 +235,34 @@ export async function resolveApprovals(rl, {
   return selectApprovals(rl, null);
 }
 
+const MERGE_METHOD_CHOICES = { 1: "squash", 2: "merge", 3: "rebase" };
+
+export async function selectMergeMethod(rl, preselectedMergeMethod) {
+  if (preselectedMergeMethod) return preselectedMergeMethod;
+
+  console.log("\nChoose the merge method to allow (restricts to one method).");
+  console.log("  1) squash");
+  console.log("  2) merge");
+  console.log("  3) rebase");
+  console.log("  4) no change");
+
+  while (true) {
+    const answer = (await rl.question("Select [1/2/3/4] (default: 4): ")).trim();
+    if (answer === "" || answer === "4") return null;
+    if (MERGE_METHOD_CHOICES[answer]) return MERGE_METHOD_CHOICES[answer];
+    console.log("Please choose 1, 2, 3, or 4.");
+  }
+}
+
+export async function resolveMergeMethod(rl, {
+  preselectedMergeMethod,
+  isInteractive
+}) {
+  if (preselectedMergeMethod !== null) return preselectedMergeMethod;
+  if (!isInteractive) return null;
+  return selectMergeMethod(rl, null);
+}
+
 function isValidBranchName(branch) {
   return Boolean(branch) &&
     !branch.startsWith("/") &&
@@ -299,7 +328,7 @@ export function makeRepositorySettingsPayload({
     payload.default_branch = selectedBranch;
   }
 
-  if (selection.mergeMethod) {
+  if (selection.mergeMethod && mergeMethod !== null) {
     payload.allow_merge_commit = mergeMethod === "merge";
     payload.allow_squash_merge = mergeMethod === "squash";
     payload.allow_rebase_merge = mergeMethod === "rebase";
@@ -344,6 +373,7 @@ export async function runSetup(args, deps) {
   let selectedBranch = null;
   let approvals = null;
   let rulesetName = null;
+  let mergeMethod = null;
 
   if (selection.branchProtection) {
     const repoInfo = deps.ghApi(`/repos/${owner}/${repo}`);
@@ -354,6 +384,13 @@ export async function runSetup(args, deps) {
       isInteractive: Boolean(deps.inputIsTTY && deps.outputIsTTY)
     });
     rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
+  }
+
+  if (selection.mergeMethod) {
+    mergeMethod = await resolveMergeMethod(questionInterface, {
+      preselectedMergeMethod: args.mergeMethod,
+      isInteractive: Boolean(deps.inputIsTTY && deps.outputIsTTY)
+    });
   }
 
   deps.log("\nPlan:");
@@ -369,7 +406,7 @@ export async function runSetup(args, deps) {
     deps.log("  Delete merged branch: enabled");
   }
   if (selection.mergeMethod) {
-    deps.log(`  Merge method:         ${args.mergeMethod} only`);
+    deps.log(`  Merge method:         ${mergeMethod ?? "unchanged"}${mergeMethod ? " only" : ""}`);
   }
 
   if (args.dryRun) {
@@ -397,15 +434,15 @@ export async function runSetup(args, deps) {
   if (selection.deleteBranchOnMerge) {
     deps.log("Enabling automatic branch deletion after merge...");
   }
-  if (selection.mergeMethod) {
-    deps.log(`Restricting merge method to '${args.mergeMethod}'...`);
+  if (selection.mergeMethod && mergeMethod !== null) {
+    deps.log(`Restricting merge method to '${mergeMethod}'...`);
   }
 
   const repoSettings = makeRepositorySettingsPayload({
     selection,
     currentDefaultBranch,
     selectedBranch,
-    mergeMethod: args.mergeMethod
+    mergeMethod
   });
 
   if (Object.keys(repoSettings).length > 0) {
@@ -441,8 +478,8 @@ export async function runSetup(args, deps) {
   if (selection.deleteBranchOnMerge) {
     deps.log("Merged Pull Request branches will be deleted automatically.");
   }
-  if (selection.mergeMethod) {
-    deps.log(`Only '${args.mergeMethod}' merges are allowed now.`);
+  if (selection.mergeMethod && mergeMethod !== null) {
+    deps.log(`Only '${mergeMethod}' merges are allowed now.`);
   }
 }
 
