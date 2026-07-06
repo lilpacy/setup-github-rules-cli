@@ -401,15 +401,19 @@ export async function runSetup(args, deps) {
     deps.log(`Restricting merge method to '${args.mergeMethod}'...`);
   }
 
-  deps.ghApi(`/repos/${owner}/${repo}`, {
-    method: "PATCH",
-    body: makeRepositorySettingsPayload({
-      selection,
-      currentDefaultBranch,
-      selectedBranch,
-      mergeMethod: args.mergeMethod
-    })
+  const repoSettings = makeRepositorySettingsPayload({
+    selection,
+    currentDefaultBranch,
+    selectedBranch,
+    mergeMethod: args.mergeMethod
   });
+
+  if (Object.keys(repoSettings).length > 0) {
+    deps.ghApi(`/repos/${owner}/${repo}`, {
+      method: "PATCH",
+      body: repoSettings
+    });
+  }
 
   if (selection.branchProtection) {
     const payload = makeRulesetPayload({ branch: selectedBranch, rulesetName, approvals });

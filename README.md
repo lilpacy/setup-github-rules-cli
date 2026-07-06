@@ -63,8 +63,13 @@ npx @lilpacy/setup-github-rules --repo lilpacy/repo-a
 
 ### branch を非対話で指定する
 
+`--branch` を指定すると **branch protection（default branch 変更 + PR 必須 ruleset）だけ**を適用します。merge 後の branch 削除も同時に有効化したい場合は `--delete-branch-on-merge` を併記してください。
+
 ```bash
 npx @lilpacy/setup-github-rules --repo lilpacy/repo-a --branch develop --yes
+
+# branch protection と merge 後 branch 削除を同時に
+npx @lilpacy/setup-github-rules --repo lilpacy/repo-a --branch develop --delete-branch-on-merge --yes
 ```
 
 ### required approvals を指定する
