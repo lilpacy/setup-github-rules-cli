@@ -1,6 +1,6 @@
 {
   "name": "@lilpacy/setup-github-rules",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "One-shot interactive GitHub repository rules setup using gh CLI. No Terraform state, no generated files.",
   "type": "module",
   "bin": {
