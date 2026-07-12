@@ -19,6 +19,7 @@ export function parseArgs(argv) {
     approvals: null,
     mergeMethod: null,
     deleteBranchOnMerge: false,
+    allowDirectCommits: false,
     yes: false,
     dryRun: false,
     help: false,
@@ -33,6 +34,7 @@ export function parseArgs(argv) {
     else if (arg === "--ruleset-name") args.rulesetName = argv[++i];
     else if (arg === "--merge-method") args.mergeMethod = argv[++i] ?? "";
     else if (arg === "--delete-branch-on-merge") args.deleteBranchOnMerge = true;
+    else if (arg === "--allow-direct-commits") args.allowDirectCommits = true;
     else if (arg === "--yes" || arg === "-y") args.yes = true;
     else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -47,8 +49,16 @@ export function parseArgs(argv) {
     throw new Error("--merge-method must be one of: squash, merge, rebase.");
   }
 
+  if (args.allowDirectCommits && args.branch === null) {
+    throw new Error("--allow-direct-commits requires --branch.");
+  }
+
+  if (args.allowDirectCommits && args.approvals !== null) {
+    throw new Error("--required-approvals cannot be used with --allow-direct-commits.");
+  }
+
   const selection = resolveSelection(args);
-  if ((args.approvals !== null || args.rulesetName !== null) && !selection.branchProtection) {
+  if ((args.approvals !== null || (args.rulesetName !== null && !args.allowDirectCommits)) && !selection.branchProtection) {
     throw new Error("--required-approvals and --ruleset-name require --branch (branch protection).");
   }
 
@@ -59,11 +69,12 @@ export function parseArgs(argv) {
 // just those settings; passing none applies the full interactive setup.
 export function resolveSelection(args) {
   const settingFlagPresent =
-    args.branch !== null || args.mergeMethod !== null || args.deleteBranchOnMerge;
+    args.branch !== null || args.mergeMethod !== null || args.deleteBranchOnMerge || args.allowDirectCommits;
   const applyAll = !settingFlagPresent;
 
   return {
-    branchProtection: applyAll || args.branch !== null,
+    branchProtection: applyAll || (args.branch !== null && !args.allowDirectCommits),
+    allowDirectCommits: args.allowDirectCommits,
     deleteBranchOnMerge: applyAll || args.deleteBranchOnMerge,
     mergeMethod: applyAll || args.mergeMethod !== null
   };
@@ -82,14 +93,16 @@ Usage:
   npx @lilpacy/setup-github-rules
   npx @lilpacy/setup-github-rules --repo OWNER/REPO
   npx @lilpacy/setup-github-rules --repo OWNER/REPO --branch develop --yes
+  npx @lilpacy/setup-github-rules --repo OWNER/REPO --branch develop --allow-direct-commits --yes
   npx @lilpacy/setup-github-rules --repo OWNER/REPO --merge-method squash --yes
   npx @lilpacy/setup-github-rules --repo OWNER/REPO --delete-branch-on-merge --yes
 
 Options:
   --repo OWNER/REPO              Target repository. Defaults to current git remote.
-  --branch BRANCH                Default branch to set and protect with a PR-required ruleset.
+  --branch BRANCH                Branch to protect, or branch to relax with --allow-direct-commits.
   --required-approvals N         Required approving reviews. Requires --branch. If omitted, prompt with default 0.
-  --ruleset-name NAME            Ruleset name. Requires --branch. Default: "Require PR to <branch>".
+  --ruleset-name NAME            Ruleset name for protecting or relaxing a branch. Default: "Require PR to <branch>".
+  --allow-direct-commits         Remove the Pull Request requirement from the named branch ruleset. Requires --branch.
   --merge-method METHOD          Allow only one merge method: squash, merge, or rebase. If omitted, prompt with default: no change.
   --delete-branch-on-merge       Delete head branches automatically after Pull Requests are merged.
   --yes, -y                      Skip final confirmation.
@@ -99,7 +112,7 @@ Options:
 Applying settings selectively:
   With no setting flag, the full interactive setup runs (branch protection,
   delete-branch-on-merge, merge method, and any prompts). Passing any of
-  --branch, --merge-method, or --delete-branch-on-merge narrows the run to
+  --branch, --allow-direct-commits, --merge-method, or --delete-branch-on-merge narrows the run to
   just those settings.
 
 What the full setup does:
@@ -110,6 +123,13 @@ What the full setup does:
   5. Enables automatic deletion of head branches after Pull Requests are merged.
   6. Lets you choose a merge method to allow, or leave it unchanged.
   7. Creates or updates a branch ruleset that requires Pull Requests.
+
+Recovery:
+  If you accidentally required Pull Requests and need direct commits again,
+  run:
+    npx @lilpacy/setup-github-rules --repo OWNER/REPO --branch BRANCH --allow-direct-commits --yes
+  This removes only the pull_request rule from the matching ruleset and keeps
+  other rules intact.
 `);
 }
 
@@ -308,6 +328,46 @@ function makeRulesetPayload({ branch, rulesetName, approvals }) {
   };
 }
 
+function makeRulesetUpdatePayload(ruleset, rules) {
+  return {
+    name: ruleset.name,
+    target: ruleset.target,
+    enforcement: ruleset.enforcement,
+    conditions: ruleset.conditions,
+    rules,
+    bypass_actors: (ruleset.bypass_actors ?? []).map((actor) => {
+      const normalized = {
+        actor_type: actor.actor_type
+      };
+
+      if ("actor_id" in actor) normalized.actor_id = actor.actor_id;
+      if ("bypass_mode" in actor) normalized.bypass_mode = actor.bypass_mode;
+
+      return normalized;
+    })
+  };
+}
+
+function cleanRulesetRule(rule) {
+  if (rule.parameters === undefined) return { type: rule.type };
+  return {
+    type: rule.type,
+    parameters: rule.parameters
+  };
+}
+
+function makeAllowDirectCommitsRulesetPayload(ruleset) {
+  const rules = (ruleset.rules ?? [])
+    .filter((rule) => rule.type !== "pull_request")
+    .map(cleanRulesetRule);
+
+  return makeRulesetUpdatePayload(ruleset, rules);
+}
+
+function rulesetTargetsBranch(ruleset, branch) {
+  return ruleset.conditions?.ref_name?.include?.includes(`refs/heads/${branch}`) ?? false;
+}
+
 function branchExists(owner, repo, branch) {
   return ghApi(`/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`, { silent404: true }) !== null;
 }
@@ -349,7 +409,7 @@ function createBranchFrom(owner, repo, newBranch, sourceBranch) {
 }
 
 function findExistingRuleset(owner, repo, rulesetName) {
-  const rulesets = ghApi(`/repos/${owner}/${repo}/rulesets`);
+  const rulesets = ghApi(`/repos/${owner}/${repo}/rulesets?includes_parents=false`);
   return Array.isArray(rulesets) ? rulesets.find((ruleset) => ruleset.name === rulesetName) : null;
 }
 
@@ -386,6 +446,11 @@ export async function runSetup(args, deps) {
     rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
   }
 
+  if (selection.allowDirectCommits) {
+    selectedBranch = args.branch;
+    rulesetName = args.rulesetName ?? `${DEFAULT_RULESET_NAME_PREFIX} ${selectedBranch}`;
+  }
+
   if (selection.mergeMethod) {
     mergeMethod = await resolveMergeMethod(questionInterface, {
       preselectedMergeMethod: args.mergeMethod,
@@ -401,6 +466,11 @@ export async function runSetup(args, deps) {
     deps.log(`  Protected branch:     ${selectedBranch}`);
     deps.log(`  Required approvals:   ${approvals}`);
     deps.log(`  Ruleset name:         ${rulesetName}`);
+  }
+  if (selection.allowDirectCommits) {
+    deps.log(`  Branch:               ${selectedBranch}`);
+    deps.log(`  Ruleset name:         ${rulesetName}`);
+    deps.log("  Direct commits:       enabled");
   }
   if (selection.deleteBranchOnMerge) {
     deps.log("  Delete merged branch: enabled");
@@ -452,6 +522,28 @@ export async function runSetup(args, deps) {
     });
   }
 
+  if (selection.allowDirectCommits) {
+    const existing = deps.findExistingRuleset(owner, repo, rulesetName);
+    if (!existing) {
+      throw new Error(`Ruleset '${rulesetName}' was not found.`);
+    }
+
+    deps.log(`Allowing direct commits by removing Pull Request requirement from ruleset '${rulesetName}'...`);
+    const existingRuleset = deps.ghApi(`/repos/${owner}/${repo}/rulesets/${existing.id}`);
+    if (!existingRuleset) {
+      throw new Error(`Ruleset '${rulesetName}' could not be loaded.`);
+    }
+
+    if (!rulesetTargetsBranch(existingRuleset, selectedBranch)) {
+      throw new Error(`Ruleset '${rulesetName}' does not target branch '${selectedBranch}'.`);
+    }
+
+    deps.ghApi(`/repos/${owner}/${repo}/rulesets/${existing.id}`, {
+      method: "PUT",
+      body: makeAllowDirectCommitsRulesetPayload(existingRuleset)
+    });
+  }
+
   if (selection.branchProtection) {
     const payload = makeRulesetPayload({ branch: selectedBranch, rulesetName, approvals });
     const existing = deps.findExistingRuleset(owner, repo, rulesetName);
@@ -474,6 +566,9 @@ export async function runSetup(args, deps) {
   deps.log("\nDone.");
   if (selection.branchProtection) {
     deps.log(`Default branch '${selectedBranch}' now requires Pull Requests before changes can be merged.`);
+  }
+  if (selection.allowDirectCommits) {
+    deps.log(`Direct commits are now allowed on '${selectedBranch}'.`);
   }
   if (selection.deleteBranchOnMerge) {
     deps.log("Merged Pull Request branches will be deleted automatically.");
